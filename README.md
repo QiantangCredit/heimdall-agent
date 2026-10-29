@@ -4,8 +4,6 @@
 
 <h1 align="center">Heimdall</h1>
 
-See [model settings](docs/model-settings.md) for capability profiles, reasoning effort, context limits and compaction controls. The existing single-model Solver / Loop execution paths are preserved. For a portable Docker image with a one-command installer, see [offline deployment](deploy/offline/README.md).
-
 <p align="center">
   <strong>English</strong> · <a href="README.zh-CN.md">简体中文</a>
 </p>
@@ -25,6 +23,7 @@ See [model settings](docs/model-settings.md) for capability profiles, reasoning 
   <a href="#design-philosophy">Design Philosophy</a> ·
   <a href="#system-architecture">System Architecture</a> ·
   <a href="#quick-start">Quick Start</a> ·
+  <a href="https://ekkoo-z.github.io/post/heimdall-tsecbench/">Technical Blog</a> ·
   <a href="https://github.com/QiantangCredit/heimdall-agent/issues">Feedback</a>
 </p>
 
@@ -35,6 +34,8 @@ Heimdall brings task scheduling, an AI solver, an observer, and a toolkit togeth
 Results: Heimdall placed in the **Top 2** in both Baidu's Agent+ online attack-and-defense challenge and [Tencent Cloud TSecBench](https://tsecbench.zc.tencent.com/#leaderboard), with the **lowest token usage on both leaderboards**.
 
 [![Tencent Cloud TSecBench leaderboard: Heimdall ranks second with an overall score of 96.89](docs/images/tsecbench-leaderboard.png)](https://tsecbench.zc.tencent.com/#leaderboard)
+
+Read the [technical blog on Heimdall and TSecBench](https://ekkoo-z.github.io/post/heimdall-tsecbench/) (Chinese) for the design rationale and evaluation walkthrough.
 
 ## Design Philosophy
 

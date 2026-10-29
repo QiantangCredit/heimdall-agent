@@ -4,8 +4,6 @@
 
 <h1 align="center">Heimdall</h1>
 
-模型配置、推理档位及上下文参数见 [模型设置](docs/model-settings.md)。支持按模型能力映射实际请求参数，并在操作台查看生效配置；仍保留单模型 Solver / Loop 执行方式。Docker 离线一键部署与镜像打包见 [部署说明](deploy/offline/README.md)。
-
 <p align="center">
   <a href="README.md">English</a> · <strong>简体中文</strong>
 </p>
@@ -25,6 +23,7 @@
   <a href="#设计理念">设计理念</a> ·
   <a href="#系统架构">系统架构</a> ·
   <a href="#快速开始">快速开始</a> ·
+  <a href="https://ekkoo-z.github.io/post/heimdall-tsecbench/">技术博客</a> ·
   <a href="https://github.com/QiantangCredit/heimdall-agent/issues">反馈问题</a>
 </p>
 
@@ -35,6 +34,8 @@ Heimdall 将任务调度、AI 求解器、观察者与工具环境集成到一�
 成绩：Heimdall 在百度 Agent+ 攻防挑战线上赛和[腾讯云 TSecBench](https://tsecbench.zc.tencent.com/#leaderboard) 中均取得 **Top 2**，且两项评测的 **Token 消耗均为排行榜中最少**。
 
 [![腾讯云 TSecBench 榜单：Heimdall 排名第二，综合得分 96.89](docs/images/tsecbench-leaderboard.png)](https://tsecbench.zc.tencent.com/#leaderboard)
+
+设计思路与评测实践见技术博客：[Heimdall 与 TSecBench](https://ekkoo-z.github.io/post/heimdall-tsecbench/)。
 
 ## 设计理念
 
