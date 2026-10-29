@@ -101,6 +101,16 @@ heimdall-agent/
 
 当前镜像在ubuntu `linux/amd64`打包运行完整测试，其他环境实际运行有问题可提issue
 
+推荐直接安装预构建 Docker 镜像：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/QiantangCredit/heimdall-agent/main/deploy/install.sh -o heimdall-install.sh && bash heimdall-install.sh
+```
+
+安装器从 GHCR 拉取公开镜像、启动 Compose 并等待健康检查通过，无需下载 Release 分卷或本机编译。配置保存在 `./heimdall-agent`，使用 `heimdall-agent` Compose project 和 `heimdall-agent_heimdall-data` 数据卷；已有 Compose 文件、模型设置和密钥会保留。端口被占用时执行 `HEIMDALL_PORT=8701 bash heimdall-install.sh`；安装目录可用 `HEIMDALL_INSTALL_DIR` 指定。
+
+安装后进入该目录，执行 `docker compose up -d --pull always --wait` 即可更新并启动，执行 `docker compose stop` 停止。需要固定到本次已验证版本时，安装前设置 `HEIMDALL_IMAGE=ghcr.io/qiantangcredit/heimdall:sha-0a711bbfc607`；`latest` 指向最近发布的镜像。离线主机见 [离线部署说明](deploy/offline/README.md)。
+
 从源码构建：
 
 ```bash

@@ -101,14 +101,15 @@ Requirements: **Docker Engine / Docker Desktop** and **Docker Compose ≥ 2.24.4
 
 The current image has been built and tested end to end on Ubuntu (`linux/amd64`). If you encounter issues on another environment, please open an issue.
 
-Install the prebuilt offline image from [GitHub Releases](https://github.com/QiantangCredit/heimdall-agent/releases/latest):
+Install the prebuilt Docker image (no source build or Release archive required):
 
 ```bash
-curl -fL https://github.com/QiantangCredit/heimdall-agent/releases/latest/download/download-install.sh -o download-install.sh
-bash download-install.sh
+curl -fsSL https://raw.githubusercontent.com/QiantangCredit/heimdall-agent/main/deploy/install.sh -o heimdall-install.sh && bash heimdall-install.sh
 ```
 
-The installer downloads two parts, verifies SHA-256 checksums, assembles the offline archive, and starts Docker Compose. To use another port, run `HEIMDALL_PORT=8701 bash download-install.sh`. Installation files are kept in `./heimdall-offline`; model credentials start empty. For manual or air-gapped installation, see the [offline deployment guide](deploy/offline/README.md).
+The installer pulls the public GHCR image, starts Compose, and waits for a healthy desk. It saves the configuration in `./heimdall-agent`, using the `heimdall-agent` Compose project and `heimdall-agent_heimdall-data` volume. Existing Compose files, saved model settings, and credentials are preserved. To choose another port, run `HEIMDALL_PORT=8701 bash heimdall-install.sh`; use `HEIMDALL_INSTALL_DIR` to select the installation directory.
+
+After installation, update and start from that directory with `docker compose up -d --pull always --wait`, or stop with `docker compose stop`. For the previously verified version, set `HEIMDALL_IMAGE=ghcr.io/qiantangcredit/heimdall:sha-0a711bbfc607` when running the installer. The `latest` tag tracks the most recently published image. See [offline deployment](deploy/offline/README.md) for air-gapped hosts.
 
 Build from source:
 

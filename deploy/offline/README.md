@@ -1,47 +1,44 @@
-# Docker 离线一键部署
+# Docker 离线部署
 
-需要 Docker Engine 或 Docker Desktop，以及 Docker Compose v2。镜像为 `linux/amd64`，包含完整工具环境；ARM 主机需要 Docker 的 amd64 模拟支持。
+日常在线安装使用根目录 README 中的 GHCR 安装命令。离线环境可在联网机器导出同一个公开镜像，无需 GitHub Release 分卷。
 
-## 从 GitHub Release 一键安装
+需要 Docker Engine 或 Docker Desktop，以及 Docker Compose v2。镜像为 `linux/amd64`；ARM 主机需要 amd64 模拟支持。
+
+## 联网机器准备
 
 ```bash
-curl -fL https://github.com/QiantangCredit/heimdall-agent/releases/latest/download/download-install.sh -o download-install.sh
-bash download-install.sh
-# 自定义端口：HEIMDALL_PORT=8701 bash download-install.sh
+mkdir -p heimdall-offline
+cd heimdall-offline
+curl -fsSL https://raw.githubusercontent.com/QiantangCredit/heimdall-agent/main/compose.yaml -o compose.yaml
+docker pull ghcr.io/qiantangcredit/heimdall:sha-0a711bbfc607
+docker save ghcr.io/qiantangcredit/heimdall:sha-0a711bbfc607 | gzip > heimdall-image.tar.gz
+printf '%s\n' 'COMPOSE_PROJECT_NAME=heimdall-agent' 'HEIMDALL_IMAGE=ghcr.io/qiantangcredit/heimdall:sha-0a711bbfc607' 'HEIMDALL_BIND=127.0.0.1' 'HEIMDALL_PORT=8700' > .env
+sha256sum heimdall-image.tar.gz compose.yaml > SHA256SUMS
 ```
 
-下载器自动下载、校验和合并分卷，然后运行包内安装器；已有的 `.env` 和数据卷会保留。安装目录默认为当前路径下的 `heimdall-offline`，可用 `HEIMDALL_INSTALL_DIR` 指定。下载器固定到对应发布版本，也可用 `HEIMDALL_RELEASE` 指定另一个兼容版本。
+将整个目录（包括 `.env`）复制到离线主机。macOS 可使用 `shasum -a 256` 代替 `sha256sum`。
 
-GitHub 单个附件必须小于 2 GiB，因此约 2.5 GiB 的离线包拆成两个分卷。完全离线安装时，在联网机器从同一 Release 下载 `heimdall-agent-linux-amd64.tar.part01`、`.part02` 和 `SHA256SUMS`，复制到同一目录后执行：
+## 离线主机启动
 
 ```bash
-cat heimdall-agent-linux-amd64.tar.part01 heimdall-agent-linux-amd64.tar.part02 > heimdall-agent-linux-amd64.tar
-awk '$2 ~ /^heimdall-agent-linux-amd64\.tar(\.part0[12])?$/ { print }' SHA256SUMS | sha256sum -c -
-# macOS 若无 sha256sum，将上一行末尾替换为 shasum -a 256 -c -
-tar -xf heimdall-agent-linux-amd64.tar
+cd heimdall-offline
+sha256sum -c SHA256SUMS
+docker load -i heimdall-image.tar.gz
+docker compose up -d --no-build --pull never --wait
 ```
 
-## 启动离线包
+默认访问 <http://127.0.0.1:8700>，在设置页填写模型地址、API Key 和模型 ID。端口被占用时修改 `.env` 中的 `HEIMDALL_PORT`。模型调用仍需要访问所配置的模型服务，完全隔离的网络须提供可达的本地模型网关。
 
-解压发布包后运行：
+数据保存在 `heimdall-agent_heimdall-data` 卷；更改 Compose project 名称会使用另一个数据卷。升级时保留原 `.env` 和数据卷，不要执行 `docker compose down -v`。从旧 Release 安装的用户可继续使用原安装目录，将 `.env` 中的 `HEIMDALL_IMAGE` 改为 GHCR 镜像，并确认 `COMPOSE_PROJECT_NAME=heimdall-agent`，再执行 Compose 更新。
 
-```bash
-cd heimdall-agent
-bash install.sh
-```
+## 从源码打包
 
-安装器校验包内文件、加载镜像并等待操作台健康。默认访问 <http://127.0.0.1:8700>，在「设置 → 模型配置」填写模型地址、API Key 和准确的模型 ID；推理档位、能力协议、上下文与压缩参数均可在该页面修改。
-
-安装前可将 `.env.example` 复制为 `.env`，修改 `HEIMDALL_PORT`（端口被占用时）、模型配置等。安装器保留已有 `.env`。模型参数只在新数据卷首次启动时初始化，后续设置保存在数据卷中。默认 Compose project 为 `heimdall-agent`，数据卷为 `heimdall-agent_heimdall-data`；更改 project 名称会使用另一个数据卷。
-
-此单模型版本保留 Pi Solver / Claude SDK Loop 两种执行入口。API Key 与私有网关没有打入镜像；运行数据不包含在发布包内。需要连接授权实验环境时，可在设置页配置 VPN。请勿使用 `docker compose down -v` 删除已有数据。
-
-从源码构建和打包（打包端需要 Node.js ≥22.19、Python 3 和 Docker）：
+仓库仍提供包含校验文件和安装器的自定义离线包生成工具：
 
 ```bash
-docker build --platform linux/amd64 -f deploy/Dockerfile --target all-in-one -t heimdall-agent:local .
+docker build --platform linux/amd64 --build-arg VCS_REF="$(git rev-parse HEAD)" -f deploy/Dockerfile --target all-in-one -t heimdall-agent:local .
 node scripts/build/smoke-container.mjs heimdall-agent:local
 npm run package:docker -- heimdall-agent:local deploy/offline/dist/heimdall-agent-linux-amd64.tar
 ```
 
-外层 `.tar` 已包含 gzip 压缩的镜像。包内 `release.json` 记录镜像 ID、源码 revision 和 lockfile 哈希，`SHA256SUMS` 用于完整性校验。
+生成的包可解压后运行包内 `install.sh`。私有配置、API Key 和运行数据不会包含在发布包中。

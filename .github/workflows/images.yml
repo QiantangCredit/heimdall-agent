@@ -36,8 +36,8 @@ jobs:
       - run: npm test && npm run build && npm run test:release
       - name: Build full environment from public sources
         run: |
-          docker build -f deploy/Dockerfile --target all-in-one -t heimdall:public-test .
-          docker build -f deploy/Dockerfile --target executor -t heimdall:executor-test .
+          docker build --build-arg VCS_REF="${{ github.sha }}" -f deploy/Dockerfile --target all-in-one -t heimdall:public-test .
+          docker build --build-arg VCS_REF="${{ github.sha }}" -f deploy/Dockerfile --target executor -t heimdall:executor-test .
           docker build -f deploy/Dockerfile --target vpn -t heimdall:vpn-test .
       - name: Verify release images
         run: |

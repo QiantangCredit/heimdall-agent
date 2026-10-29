@@ -1,0 +1,70 @@
+name: verify-online-install
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: Public GHCR image to install without credentials
+        type: string
+        default: ghcr.io/qiantangcredit/heimdall:latest
+permissions:
+  contents: read
+jobs:
+  install:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      HEIMDALL_IMAGE: ${{ inputs.image }}
+      HEIMDALL_PORT: '18700'
+      COMPOSE_PROJECT_NAME: heimdall-install-check
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.0'
+      - name: Prepare a clean Docker client and disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+          mkdir -p "$RUNNER_TEMP/anonymous-docker"
+          printf 'DOCKER_CONFIG=%s\nHEIMDALL_INSTALL_DIR=%s\n' "$RUNNER_TEMP/anonymous-docker" "$RUNNER_TEMP/heimdall-install" >> "$GITHUB_ENV"
+      - name: Run the documented online installer
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/QiantangCredit/heimdall-agent/main/deploy/install.sh -o "$RUNNER_TEMP/heimdall-install.sh"
+          cmp deploy/install.sh "$RUNNER_TEMP/heimdall-install.sh"
+          bash "$RUNNER_TEMP/heimdall-install.sh"
+      - name: Verify the desk and its static assets
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          const base = `http://127.0.0.1:${process.env.HEIMDALL_PORT}`;
+          const health = await (await fetch(`${base}/health`)).json();
+          assert.equal(health.ok, true);
+          assert.equal(health.active_jobs, 0);
+          assert.equal(health.settings.runtime_capabilities.local.available, true);
+          const home = await fetch(base);
+          assert.equal(home.status, 200);
+          const html = await home.text();
+          const assets = [...html.matchAll(/(?:src|href)="([^"]+\.(?:js|css))"/g)].map(match => match[1]);
+          assert(assets.some(path => path.endsWith('.js')) && assets.some(path => path.endsWith('.css')));
+          for (const path of assets) {
+            const response = await fetch(new URL(path, base));
+            assert.equal(response.status, 200);
+            assert((await response.arrayBuffer()).byteLength > 0);
+          }
+          console.log('Anonymous image pull, installer, health, local runtime, JS and CSS passed.');
+          JS
+      - name: Verify Compose project and data persistence
+        run: |
+          cd "$HEIMDALL_INSTALL_DIR"
+          docker compose exec -T heimdall sh -c 'printf retained > /opt/heimdall/data/install-check'
+          docker compose up -d --force-recreate --pull never --wait
+          test "$(docker compose exec -T heimdall cat /opt/heimdall/data/install-check)" = retained
+          printf 'Verified public online installation of `%s`, including recreation persistence.\n' "$HEIMDALL_IMAGE" >> "$GITHUB_STEP_SUMMARY"
+      - name: Clean up the temporary installation
+        if: always()
+        run: |
+          if [[ -f "$RUNNER_TEMP/heimdall-install/compose.yaml" ]]; then
+            cd "$RUNNER_TEMP/heimdall-install"
+            docker compose down --volumes
+          fi
