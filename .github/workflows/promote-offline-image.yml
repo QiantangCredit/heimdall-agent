@@ -49,7 +49,23 @@ jobs:
           sha256sum -c SHA256SUMS
           node --input-type=module -e 'import fs from "node:fs"; import assert from "node:assert/strict"; const r=JSON.parse(fs.readFileSync("release.json")); assert.equal(r.revision,process.env.SOURCE_REVISION); assert.equal(r.imageId,process.env.EXPECTED_IMAGE_ID); assert.equal(r.dirty,false);'
           docker load -i heimdall-image.tar.gz
-          test "$(docker image inspect "$SOURCE_IMAGE" --format '{{.Id}}')" = "$EXPECTED_IMAGE_ID"
+          # Containerd reports the OCI index ID; classic Docker reports the config ID.
+          # The archive is pinned above. Compare the platform, source and filesystem
+          # layers, which have the same identity on both image stores.
+          docker image inspect "$SOURCE_IMAGE" > image-inspect.json
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          const [image] = JSON.parse(fs.readFileSync('image-inspect.json'));
+          assert.equal(image.Os, 'linux');
+          assert.equal(image.Architecture, 'amd64');
+          assert.equal(image.Config.Labels['org.opencontainers.image.revision'], process.env.SOURCE_REVISION);
+          assert.deepEqual(image.RootFS.Layers, [
+            'sha256:9eec1341d8b5410eb55cb0ee93fb7ba9b745cdd852949c7a65e629e95e4f2008',
+            'sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef',
+          ]);
+          console.log(`Verified imported image ${image.Id}: matching source and filesystem layers.`);
+          JS
           rm heimdall-image.tar.gz
       - name: Verify the imported runtime
         run: |
