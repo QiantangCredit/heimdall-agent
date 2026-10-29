@@ -1,0 +1,97 @@
+name: promote-verified-offline-image
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: heimdall-image-publish
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      SOURCE_REVISION: 0a711bbfc60796395beb0c377a9e486239b993df
+      SOURCE_IMAGE: heimdall-agent:model-config-0a711bb
+      EXPECTED_IMAGE_ID: sha256:d03bda42d1bb071db7790b4a7db9d72c508f433cf5ed151d34c4af0099ac137f
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.0'
+      - name: Check repository and package visibility
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/build/verify-package-privacy.mjs
+      - name: Make space on the disposable runner
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+      - name: Download and verify the tested release image
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          package_dir="$RUNNER_TEMP/heimdall-offline"
+          mkdir -p "$package_dir"
+          gh release download offline-20261026-0a711bb --repo "$GITHUB_REPOSITORY" --dir "$package_dir" \
+            --pattern 'heimdall-agent-linux-amd64.tar.part*' --pattern SHA256SUMS
+          cd "$package_dir"
+          cat heimdall-agent-linux-amd64.tar.part01 heimdall-agent-linux-amd64.tar.part02 > heimdall-agent-linux-amd64.tar
+          printf '%s  %s\n' c66a03c75274065f1d515bc57fa89fe557a6ef5f35717cdcf79ed1c4c535efd0 heimdall-agent-linux-amd64.tar | sha256sum -c -
+          rm heimdall-agent-linux-amd64.tar.part01 heimdall-agent-linux-amd64.tar.part02
+          tar -xf heimdall-agent-linux-amd64.tar
+          rm heimdall-agent-linux-amd64.tar
+          cd heimdall-agent
+          sha256sum -c SHA256SUMS
+          node --input-type=module -e 'import fs from "node:fs"; import assert from "node:assert/strict"; const r=JSON.parse(fs.readFileSync("release.json")); assert.equal(r.revision,process.env.SOURCE_REVISION); assert.equal(r.imageId,process.env.EXPECTED_IMAGE_ID); assert.equal(r.dirty,false);'
+          docker load -i heimdall-image.tar.gz
+          test "$(docker image inspect "$SOURCE_IMAGE" --format '{{.Id}}')" = "$EXPECTED_IMAGE_ID"
+          rm heimdall-image.tar.gz
+      - name: Verify the imported runtime
+        run: |
+          docker run --rm --network none --entrypoint node "$SOURCE_IMAGE" scripts/build/check-tools.mjs
+          node scripts/build/smoke-container.mjs "$SOURCE_IMAGE"
+      - name: Prepare matching executor and VPN images
+        run: |
+          docker build --pull=false --network none -t heimdall:executor-publish - <<'DOCKERFILE'
+          FROM heimdall-agent:model-config-0a711bb
+          WORKDIR /workspace
+          ENTRYPOINT ["/opt/heimdall/scripts/runtime/ctf-agent.sh"]
+          DOCKERFILE
+          docker build --build-arg VCS_REF="$SOURCE_REVISION" -f deploy/Dockerfile --target vpn -t heimdall:vpn-publish .
+          npm ci --no-audit --no-fund
+          npm run build:server
+          node scripts/build/smoke-docker.mjs heimdall:executor-publish
+          docker run --rm --network none --entrypoint openvpn heimdall:vpn-publish --version
+      - name: Publish versioned images and latest
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          registry="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/heimdall"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          for tag in "sha-${SOURCE_REVISION:0:12}" latest; do
+            docker tag "$SOURCE_IMAGE" "$registry:$tag"
+            docker tag heimdall:executor-publish "$registry:executor-$tag"
+            docker tag heimdall:vpn-publish "$registry:vpn-$tag"
+            docker push "$registry:$tag"
+            docker push "$registry:executor-$tag"
+            docker push "$registry:vpn-$tag"
+          done
+          docker logout ghcr.io
+      - name: Verify anonymous access to the published images
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node scripts/build/verify-package-privacy.mjs --require-existing
+          export DOCKER_CONFIG="$RUNNER_TEMP/heimdall-anonymous-docker"
+          mkdir -p "$DOCKER_CONFIG"
+          registry="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/heimdall"
+          for tag in "sha-${SOURCE_REVISION:0:12}" latest executor-latest vpn-latest; do
+            docker manifest inspect "$registry:$tag" > /dev/null
+          done
+          printf 'Published verified application revision `%s` to `%s:latest`.\n' "$SOURCE_REVISION" "$registry" >> "$GITHUB_STEP_SUMMARY"
